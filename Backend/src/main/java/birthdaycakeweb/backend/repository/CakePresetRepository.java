@@ -7,7 +7,5 @@ import java.util.List;
 import java.util.UUID;
 
 public interface CakePresetRepository extends JpaRepository<CakePreset, UUID> {
-
     List<CakePreset> findByClientIdOrderByCreatedAtDesc(String clientId);
-
 }

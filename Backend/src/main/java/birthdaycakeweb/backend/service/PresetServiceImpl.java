@@ -3,8 +3,10 @@ package birthdaycakeweb.backend.service;
 import birthdaycakeweb.backend.dto.CreatePresetRequest;
 import birthdaycakeweb.backend.dto.PresetResponse;
 import birthdaycakeweb.backend.pojo.CakePreset;
+import birthdaycakeweb.backend.pojo.CakeTemplate;
 import birthdaycakeweb.backend.pojo.Client;
 import birthdaycakeweb.backend.repository.CakePresetRepository;
+import birthdaycakeweb.backend.repository.CakeTemplateRepository;
 import birthdaycakeweb.backend.repository.ClientRepository;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -21,13 +23,16 @@ public class PresetServiceImpl implements PresetService {
 
     private final ClientRepository clientRepository;
     private final CakePresetRepository cakePresetRepository;
+    private final CakeTemplateRepository cakeTemplateRepository;
     private final ObjectMapper objectMapper;
 
     public PresetServiceImpl(ClientRepository clientRepository,
                              CakePresetRepository cakePresetRepository,
+                             CakeTemplateRepository cakeTemplateRepository,
                              ObjectMapper objectMapper) {
         this.clientRepository = clientRepository;
         this.cakePresetRepository = cakePresetRepository;
+        this.cakeTemplateRepository = cakeTemplateRepository;
         this.objectMapper = objectMapper;
     }
 
@@ -41,22 +46,19 @@ public class PresetServiceImpl implements PresetService {
             clientRepository.save(client);
         }
 
-        // 2) Validate shape/size
-        validateShapeAndSize(req);
+        // 2) Validate template
+        if (req.getTemplateId() == null || req.getTemplateId().isBlank()) {
+            throw new IllegalArgumentException("templateId is required");
+        }
+        CakeTemplate template = cakeTemplateRepository.findById(req.getTemplateId())
+                .orElseThrow(() -> new IllegalArgumentException("Invalid templateId: " + req.getTemplateId()));
 
         // 3) Map DTO -> Entity
         CakePreset preset = new CakePreset();
         preset.setClientId(req.getClientId());
         preset.setNameText(req.getNameText());
         preset.setAgeNumber(req.getAgeNumber());
-
-        // normalize shape
-        String shape = req.getShape() == null ? null : req.getShape().trim().toLowerCase();
-        preset.setShape(shape);
-
-        preset.setSizeDiameter(req.getSizeDiameter());
-        preset.setSizeW(req.getSizeW());
-        preset.setSizeH(req.getSizeH());
+        preset.setTemplate(template);
         preset.setFlavor(req.getFlavor());
 
         // toppings: Object/Map/List -> JsonNode (null-safe)
@@ -97,41 +99,22 @@ public class PresetServiceImpl implements PresetService {
         return mapToResponse(preset);
     }
 
-    private void validateShapeAndSize(CreatePresetRequest req) {
-        String shape = req.getShape() == null ? null : req.getShape().trim().toLowerCase();
-        if (shape == null || shape.isEmpty()) {
-            throw new IllegalArgumentException("Shape is required");
-        }
-        if ("round".equals(shape)) {
-            if (req.getSizeDiameter() == null || req.getSizeDiameter() <= 0) {
-                throw new IllegalArgumentException("sizeDiameter is required and must be positive for round shape");
-            }
-        } else if ("square".equals(shape)) {
-            if (req.getSizeW() == null || req.getSizeW() <= 0 ||
-                    req.getSizeH() == null || req.getSizeH() <= 0) {
-                throw new IllegalArgumentException("sizeW and sizeH are required and must be positive for square shape");
-            }
-        } else {
-            throw new IllegalArgumentException("Invalid shape. Must be 'round' or 'square'");
-        }
-    }
-
     private PresetResponse mapToResponse(CakePreset preset) {
         PresetResponse res = new PresetResponse();
         res.setId(preset.getId());
         res.setClientId(preset.getClientId());
         res.setNameText(preset.getNameText());
         res.setAgeNumber(preset.getAgeNumber());
-        res.setShape(preset.getShape());
-        res.setSizeDiameter(preset.getSizeDiameter());
-        res.setSizeW(preset.getSizeW());
-        res.setSizeH(preset.getSizeH());
+
+        if (preset.getTemplate() != null) {
+            res.setTemplateId(preset.getTemplate().getId());
+            res.setTemplateShape(preset.getTemplate().getShape());
+            res.setTemplateTiers(preset.getTemplate().getTiers());
+        }
+
         res.setFlavor(preset.getFlavor());
         res.setCandlesCount(preset.getCandlesCount());
-
-        // trả thẳng JsonNode (Jackson tự serialize ra JSON)
         res.setToppings(preset.getToppings());
-
         return res;
     }
 }
